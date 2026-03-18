@@ -311,6 +311,7 @@
 
     let player = null;
     let ytApiReady = false;
+    let pendingYoutubeLoad = false;
     let youtubeInputValue = "";
     let autoControlMusic = true;
 
@@ -476,22 +477,26 @@
 
       const raw = youtubeInputValue;
       if (raw.includes("list=RD") || raw.includes("RDCLAK")) {
+        pendingYoutubeLoad = false;
         renderYouTubePlaceholder("RD / RDCLAK auto-mix kan ikke embeddes. Brug en almindelig YouTube-playliste eller en normal video.", true);
         return;
       }
 
       const parsed = parseYouTubeInput(raw);
       if (!parsed.videoId && !parsed.playlistId) {
+        pendingYoutubeLoad = false;
         renderYouTubePlaceholder("Kunne ikke læse linket. Prøv et almindeligt YouTube-link eller playlist-link.");
         return;
       }
 
-      youtubeWrap.innerHTML = '<div id="youtubePlayer"></div>';
-
       if (!ytApiReady || !window.YT || !window.YT.Player) {
-        renderYouTubePlaceholder("YouTube API er ikke klar endnu. Klik Indlæs embed igen om et øjeblik.");
+        pendingYoutubeLoad = true;
+        renderYouTubePlaceholder("YouTube API starter... vent et øjeblik, så loader playlisten automatisk.");
         return;
       }
+
+      pendingYoutubeLoad = false;
+      youtubeWrap.innerHTML = '<div id="youtubePlayer"></div>';
 
       try {
         if (player && typeof player.destroy === "function") {
@@ -750,7 +755,7 @@
 
     window.onYouTubeIframeAPIReady = function () {
       ytApiReady = true;
-      if (youtubeInputValue) {
+      if (pendingYoutubeLoad || youtubeInputValue) {
         createPlayerFromInput();
       }
     };
@@ -776,6 +781,7 @@
 
     youtubeInput.addEventListener("change", () => {
       youtubeInputValue = youtubeInput.value.trim();
+      pendingYoutubeLoad = false;
       saveState();
     });
 
