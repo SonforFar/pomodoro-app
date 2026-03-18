@@ -1,619 +1,792 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
-import { Badge } from "@/components/ui/badge";
-import { Play, Pause, RotateCcw, CheckCircle2, TimerReset, Trash2, Download, FileText } from "lucide-react";
-import { motion } from "framer-motion";
-
-const WORK_MINUTES = 25;
-const BREAK_MINUTES = 5;
-const STORAGE_KEY = "pomodoro-sprint-log-v1";
-
-function playWorkEndAlarm() {
-  try {
-    const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
-    if (!AudioCtx) return;
-    const ctx = new AudioCtx();
-    const gain = ctx.createGain();
-    gain.connect(ctx.destination);
-
-    const beeps = [0, 0.18, 0.36, 0.7, 0.88, 1.06];
-
-    beeps.forEach((startAt, index) => {
-      const oscillator = ctx.createOscillator();
-      const localGain = ctx.createGain();
-
-      oscillator.type = "square";
-      oscillator.frequency.setValueAtTime(index < 3 ? 920 : 720, ctx.currentTime + startAt);
-
-      oscillator.connect(localGain);
-      localGain.connect(gain);
-
-      localGain.gain.setValueAtTime(0.0001, ctx.currentTime + startAt);
-      localGain.gain.exponentialRampToValueAtTime(0.22, ctx.currentTime + startAt + 0.01);
-      localGain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + startAt + 0.13);
-
-      oscillator.start(ctx.currentTime + startAt);
-      oscillator.stop(ctx.currentTime + startAt + 0.14);
-    });
-
-    setTimeout(() => {
-      void ctx.close();
-    }, 1600);
-  } catch {
-    // ignore audio errors in restricted environments
-  }
-}
-
-function playBackToWorkSound() {
-  try {
-    const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
-    if (!AudioCtx) return;
-    const ctx = new AudioCtx();
-    const gain = ctx.createGain();
-    gain.connect(ctx.destination);
-
-    const notes = [440, 554, 659, 880];
-    const starts = [0, 0.45, 0.9, 1.35];
-    const lengths = [0.18, 0.18, 0.18, 0.32];
-
-    notes.forEach((frequency, index) => {
-      const oscillator = ctx.createOscillator();
-      const localGain = ctx.createGain();
-      const startAt = starts[index];
-      const endAt = startAt + lengths[index];
-
-      oscillator.type = index === 3 ? "sawtooth" : "sine";
-      oscillator.frequency.setValueAtTime(frequency, ctx.currentTime + startAt);
-
-      oscillator.connect(localGain);
-      localGain.connect(gain);
-
-      localGain.gain.setValueAtTime(0.0001, ctx.currentTime + startAt);
-      localGain.gain.exponentialRampToValueAtTime(0.18, ctx.currentTime + startAt + 0.02);
-      localGain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + endAt);
-
-      oscillator.start(ctx.currentTime + startAt);
-      oscillator.stop(ctx.currentTime + endAt + 0.02);
-    });
-
-    setTimeout(() => {
-      void ctx.close();
-    }, 2200);
-  } catch {
-    // ignore audio errors in restricted environments
-  }
-}
-
-function formatTime(totalSeconds: number) {
-  const mins = Math.floor(totalSeconds / 60)
-    .toString()
-    .padStart(2, "0");
-  const secs = Math.floor(totalSeconds % 60)
-    .toString()
-    .padStart(2, "0");
-  return `${mins}:${secs}`;
-}
-
-type LogItem = {
-  id: number;
-  sprint: number;
-  title: string;
-  notes: string;
-  createdAt: string;
-};
-
-type ParsedYouTube = {
-  videoId?: string;
-  playlistId?: string;
-  rawInput?: string;
-};
-
-function getYouTubeEmbedIssue(parsed: ParsedYouTube) {
-  const raw = (parsed.rawInput || "").trim();
-  const playlistId = parsed.playlistId || "";
-
-  if (!raw) return "";
-
-  if (raw.includes("music.youtube.com")) {
-    return "YouTube Music-links kan normalt ikke embeddes direkte. Brug det samme nummer eller den samme playliste på almindelig youtube.com i stedet.";
-  }
-
-  if (playlistId.startsWith("RD") || playlistId.startsWith("RDCLAK")) {
-    return "Denne type auto-mix eller Music-playliste kan ikke embeddes hos YouTube. Brug en normal YouTube-video eller en rigtig playlist med et ID, der typisk starter med PL.";
-  }
-
-  return "";
-}
-
-function parseYouTubeInput(input: string): ParsedYouTube {
-  const value = input.trim();
-  if (!value) return { rawInput: input };
-
-  if (!value.includes("http")) {
-    if (value.startsWith("PL") || value.startsWith("UU") || value.startsWith("RD")) {
-      return { playlistId: value, rawInput: input };
+<!doctype html>
+<html lang="da">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>25:00 • FOKUS</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ccircle cx='50' cy='50' r='50' fill='%23111827' /%3E%3C/svg%3E">
+  <style>
+    :root {
+      --bg: #f8fafc;
+      --card: #ffffff;
+      --text: #0f172a;
+      --muted: #64748b;
+      --line: #e2e8f0;
+      --soft: #f1f5f9;
+      --btn: #0f172a;
+      --btnText: #ffffff;
+      --work: #111827;
+      --break: #16a34a;
     }
-    if (/^[a-zA-Z0-9_-]{11}$/.test(value)) {
-      return { videoId: value, rawInput: input };
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: var(--bg);
+      color: var(--text);
     }
-    return { rawInput: input };
-  }
+    .wrap {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 20px;
+      display: grid;
+      grid-template-columns: 1.1fr 0.9fr;
+      gap: 24px;
+    }
+    .card {
+      background: var(--card);
+      border-radius: 24px;
+      box-shadow: 0 10px 30px rgba(15, 23, 42, 0.08);
+      padding: 24px;
+    }
+    .topline, .row-between {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+    h1, h2, h3, p { margin: 0; }
+    h1 { font-size: 32px; }
+    h2 { font-size: 22px; }
+    .muted { color: var(--muted); }
+    .badge {
+      background: var(--soft);
+      border-radius: 999px;
+      padding: 8px 14px;
+      font-size: 14px;
+      font-weight: 600;
+    }
+    .inner {
+      background: #fff;
+      border-radius: 20px;
+      padding: 22px;
+      box-shadow: 0 4px 16px rgba(15, 23, 42, 0.05);
+      margin-top: 18px;
+    }
+    .timer {
+      text-align: center;
+      font-size: 76px;
+      font-weight: 700;
+      letter-spacing: -2px;
+      margin: 16px 0;
+    }
+    .progress {
+      height: 12px;
+      background: var(--soft);
+      border-radius: 999px;
+      overflow: hidden;
+    }
+    .progress-bar {
+      height: 100%;
+      width: 0%;
+      background: var(--text);
+      transition: width 0.4s ease;
+    }
+    .buttons {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      margin-top: 20px;
+    }
+    button {
+      border: 0;
+      border-radius: 16px;
+      padding: 12px 16px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      background: var(--btn);
+      color: var(--btnText);
+    }
+    button.secondary {
+      background: #e2e8f0;
+      color: var(--text);
+    }
+    button.outline, button.ghost {
+      background: transparent;
+      color: var(--text);
+      border: 1px solid var(--line);
+    }
+    button.ghost {
+      border: 0;
+      color: var(--muted);
+    }
+    .text-link {
+      background: none;
+      border: none;
+      padding: 0;
+      text-decoration: underline;
+      color: var(--muted);
+      cursor: pointer;
+      font: inherit;
+    }
+    .field-group {
+      display: grid;
+      gap: 12px;
+      margin-top: 16px;
+    }
+    .settings-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+    }
+    input, textarea {
+      width: 100%;
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      padding: 14px 15px;
+      font: inherit;
+      background: #fff;
+      color: var(--text);
+    }
+    textarea {
+      min-height: 130px;
+      resize: vertical;
+    }
+    .log-list {
+      display: grid;
+      gap: 12px;
+      margin-top: 16px;
+    }
+    .log-item {
+      border: 1px solid var(--line);
+      border-radius: 20px;
+      padding: 16px;
+      background: #fff;
+      box-shadow: 0 4px 14px rgba(15, 23, 42, 0.04);
+    }
+    .log-title { font-weight: 700; margin-bottom: 4px; }
+    .log-meta { color: var(--muted); font-size: 12px; }
+    .log-notes { margin-top: 10px; line-height: 1.6; white-space: pre-wrap; }
+    .empty {
+      border: 1px dashed var(--line);
+      border-radius: 18px;
+      padding: 20px;
+      color: var(--muted);
+      margin-top: 16px;
+    }
+    .small { font-size: 12px; color: var(--muted); line-height: 1.5; }
+    .notice {
+      border: 1px solid #fde68a;
+      background: #fffbeb;
+      color: #92400e;
+      border-radius: 16px;
+      padding: 14px;
+      font-size: 14px;
+      line-height: 1.5;
+    }
+    iframe, #youtubePlayer {
+      width: 100%;
+      height: 220px;
+      border: 0;
+      border-radius: 16px;
+      background: #000;
+      overflow: hidden;
+    }
+    @media (max-width: 900px) {
+      .wrap { grid-template-columns: 1fr; }
+      .timer { font-size: 58px; }
+      .settings-grid { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <section class="card">
+      <div class="topline">
+        <div>
+          <h1>Pomodoro timer</h1>
+          <p class="muted">Version med sprint-log, justerbar tid og YouTube embed.</p>
+        </div>
+        <div class="badge" id="sprintBadge">Sprint 1</div>
+      </div>
 
-  try {
-    const url = new URL(value);
-    const videoId = url.searchParams.get("v") || undefined;
-    const playlistId = url.searchParams.get("list") || undefined;
+      <div class="inner">
+        <div class="row-between">
+          <h2>Indstillinger</h2>
+        </div>
+        <div class="field-group">
+          <div class="settings-grid">
+            <div>
+              <label class="small" for="workMinutesInput">Fokus minutter</label>
+              <input id="workMinutesInput" type="number" min="1" max="180" value="25" />
+            </div>
+            <div>
+              <label class="small" for="breakMinutesInput">Pause minutter</label>
+              <input id="breakMinutesInput" type="number" min="1" max="60" value="5" />
+            </div>
+          </div>
+          <div class="buttons" style="margin-top:0;">
+            <button class="outline" id="saveSettingsBtn">Gem tider</button>
+          </div>
+          <p class="small">Når du gemmer tider, nulstilles timeren til fokus med de nye værdier.</p>
+        </div>
+      </div>
 
-    if (!videoId && !playlistId && (url.hostname.includes("youtu.be") || url.pathname.includes("/embed/"))) {
-      const parts = url.pathname.split("/").filter(Boolean);
-      const guessed = parts[parts.length - 1];
-      if (guessed) return { videoId: guessed, playlistId, rawInput: input };
+      <div class="inner">
+        <div class="row-between muted" style="font-size:14px;">
+          <span id="modeLabel">Fokus</span>
+          <button class="text-link" id="switchModeTop">Skift mode</button>
+        </div>
+
+        <div class="timer" id="timerDisplay">25:00</div>
+
+        <div class="progress">
+          <div class="progress-bar" id="progressBar"></div>
+        </div>
+
+        <div class="buttons">
+          <button id="startPauseBtn">Start</button>
+          <button class="secondary" id="resetBtn">Reset</button>
+          <button class="outline" id="switchModeBtn">Fokus / pause</button>
+        </div>
+      </div>
+
+      <div class="inner">
+        <div class="row-between">
+          <h2>YouTube musik i timeren</h2>
+        </div>
+        <div class="field-group">
+          <input id="youtubeInput" placeholder="Indsæt YouTube video- eller playlist-link" />
+          <label class="small">
+            <input id="autoControlMusic" type="checkbox" checked />
+            Pause musik når fokus slutter, og start igen når pausen slutter
+          </label>
+          <div class="buttons" style="margin-top:0;">
+            <button class="outline" id="loadYoutubeBtn">Indlæs embed</button>
+            <button class="outline" id="playYoutubeBtn">Start musik nu</button>
+            <button class="outline" id="pauseYoutubeBtn">Pause musik nu</button>
+          </div>
+          <div id="youtubeWrap">
+            <div class="empty">Indsæt et almindeligt YouTube-link eller playlist-link og klik “Indlæs embed”.</div>
+          </div>
+          <p class="small">Musikken forsøges sat til 80% volumen. Første play skal du typisk selv trykke i playeren.</p>
+        </div>
+      </div>
+
+      <div class="inner">
+        <div class="row-between">
+          <h2>Log for sprintet</h2>
+        </div>
+        <div class="field-group">
+          <input id="titleInput" placeholder="Hvad arbejdede du på?" />
+          <textarea id="notesInput" placeholder="Hvad fik du lavet i sprintet?"></textarea>
+          <div class="buttons">
+            <button id="saveBtn">Gem note</button>
+            <button class="outline" id="clearFieldsBtn">Ryd felter</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <aside class="card">
+      <div class="row-between">
+        <div class="buttons" style="margin-top:0;">
+          <h2 style="margin-right:6px;">Tidligere sprint-noter</h2>
+          <button class="outline" id="exportMdBtn">Eksportér .md</button>
+          <button class="outline" id="exportCsvBtn">Eksportér CSV</button>
+        </div>
+        <button class="ghost" id="clearAllBtn">Ryd alt</button>
+      </div>
+      <div id="logContainer"></div>
+    </aside>
+  </div>
+
+  <script src="https://www.youtube.com/iframe_api"></script>
+  <script>
+    const STORAGE_KEY = "pomodoro-sprint-log-v3";
+    const DEFAULT_WORK_MINUTES = 25;
+    const DEFAULT_BREAK_MINUTES = 5;
+
+    let workMinutes = DEFAULT_WORK_MINUTES;
+    let breakMinutes = DEFAULT_BREAK_MINUTES;
+    let mode = "work";
+    let secondsLeft = workMinutes * 60;
+    let running = false;
+    let sprintCount = 1;
+    let logs = [];
+    let timerId = null;
+    let endTime = null;
+
+    let player = null;
+    let ytApiReady = false;
+    let youtubeInputValue = "";
+    let autoControlMusic = true;
+
+    const sprintBadge = document.getElementById("sprintBadge");
+    const modeLabel = document.getElementById("modeLabel");
+    const timerDisplay = document.getElementById("timerDisplay");
+    const progressBar = document.getElementById("progressBar");
+    const startPauseBtn = document.getElementById("startPauseBtn");
+    const titleInput = document.getElementById("titleInput");
+    const notesInput = document.getElementById("notesInput");
+    const logContainer = document.getElementById("logContainer");
+    const youtubeInput = document.getElementById("youtubeInput");
+    const youtubeWrap = document.getElementById("youtubeWrap");
+    const autoControlCheckbox = document.getElementById("autoControlMusic");
+    const workMinutesInput = document.getElementById("workMinutesInput");
+    const breakMinutesInput = document.getElementById("breakMinutesInput");
+    const faviconEl = document.querySelector("link[rel='icon']");
+
+    function formatTime(totalSeconds) {
+      const mins = String(Math.floor(totalSeconds / 60)).padStart(2, "0");
+      const secs = String(totalSeconds % 60).padStart(2, "0");
+      return `${mins}:${secs}`;
     }
 
-    return { videoId, playlistId, rawInput: input };
-  } catch {
-    return { rawInput: input };
-  }
-}
-
-function buildYouTubeEmbedUrl(input: string) {
-  const parsed = parseYouTubeInput(input);
-  const issue = getYouTubeEmbedIssue(parsed);
-
-  if (issue) return "";
-
-  if (parsed.videoId && parsed.playlistId) {
-    return `https://www.youtube-nocookie.com/embed/${parsed.videoId}?list=${parsed.playlistId}&rel=0`;
-  }
-  if (parsed.playlistId) {
-    return `https://www.youtube-nocookie.com/embed/videoseries?list=${parsed.playlistId}`;
-  }
-  if (parsed.videoId) {
-    return `https://www.youtube-nocookie.com/embed/${parsed.videoId}?rel=0`;
-  }
-  return "";
-}
-
-export default function PomodoroTimerMedSprintlog() {
-  // 🔥 Feature B: Dynamisk titel + farve i browser tab
-  useEffect(() => {
-    const time = formatTime(secondsLeft);
-    const label = mode === "work" ? "FOKUS" : "PAUSE";
-    document.title = `${time} • ${label}`;
-
-    // Skift farve via favicon (hack men virker)
-    const favicon = document.querySelector("link[rel='icon']") as HTMLLinkElement | null;
-    if (favicon) {
-      const color = mode === "work" ? "#111827" : "#16a34a"; // sort / grøn
-      const svg = `<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'>
-        <circle cx='50' cy='50' r='50' fill='${color}' />
-      </svg>`;
-      favicon.href = `data:image/svg+xml,${encodeURIComponent(svg)}`;
-    }
-  }, [secondsLeft, mode]);
-  const endTimeRef = useRef<number | null>(null);
-  const activeModeRef = useRef<"work" | "break">("work");
-
-  const [mode, setMode] = useState<"work" | "break">("work");
-  const [secondsLeft, setSecondsLeft] = useState<number>(WORK_MINUTES * 60);
-  const [running, setRunning] = useState<boolean>(false);
-  const [sprintCount, setSprintCount] = useState<number>(1);
-
-  const [title, setTitle] = useState<string>("");
-  const [notes, setNotes] = useState<string>("");
-  const [logs, setLogs] = useState<LogItem[]>([]);
-  const [youtubeInput, setYoutubeInput] = useState<string>("");
-  const [autoControlMusic, setAutoControlMusic] = useState<boolean>(true);
-
-  useEffect(() => {
-    const saved = localStorage.getItem(STORAGE_KEY);
-    if (!saved) return;
-
-    try {
-      const parsed = JSON.parse(saved) as {
-        logs?: LogItem[];
-        sprintCount?: number;
-        youtubeInput?: string;
-        autoControlMusic?: boolean;
-      };
-      setLogs(Array.isArray(parsed.logs) ? parsed.logs : []);
-      setSprintCount(typeof parsed.sprintCount === "number" ? parsed.sprintCount : 1);
-      setYoutubeInput(typeof parsed.youtubeInput === "string" ? parsed.youtubeInput : "");
-      setAutoControlMusic(typeof parsed.autoControlMusic === "boolean" ? parsed.autoControlMusic : true);
-    } catch {
-      // ignore corrupted local storage
-    }
-  }, []);
-
-  useEffect(() => {
-    localStorage.setItem(
-      STORAGE_KEY,
-      JSON.stringify({ logs, sprintCount, youtubeInput, autoControlMusic })
-    );
-  }, [logs, sprintCount, youtubeInput, autoControlMusic]);
-
-  useEffect(() => {
-    activeModeRef.current = mode;
-  }, [mode]);
-
-  useEffect(() => {
-    if (!running) {
-      endTimeRef.current = null;
-      return;
+    function escapeHtml(text) {
+      return String(text)
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#039;");
     }
 
-    if (!endTimeRef.current) {
-      endTimeRef.current = Date.now() + secondsLeft * 1000;
+    function updateTabAppearance() {
+      const time = formatTime(secondsLeft);
+      const label = mode === "work" ? "FOKUS" : "PAUSE";
+      document.title = `${time} • ${label}`;
+
+      if (faviconEl) {
+        const color = mode === "work" ? "%23111827" : "%2316a34a";
+        faviconEl.href = `data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ccircle cx='50' cy='50' r='50' fill='${color}' /%3E%3C/svg%3E`;
+      }
     }
 
-    const finishCycle = () => {
-      const currentMode = activeModeRef.current;
+    function saveState() {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify({
+        workMinutes,
+        breakMinutes,
+        logs,
+        sprintCount,
+        youtubeInputValue,
+        autoControlMusic
+      }));
+    }
 
-      if (currentMode === "work") {
-        playWorkEndAlarm();
-        setSprintCount((count) => count + 1);
-      } else {
-        playBackToWorkSound();
+    function loadState() {
+      try {
+        const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || "null");
+        if (saved) {
+          workMinutes = typeof saved.workMinutes === "number" ? saved.workMinutes : DEFAULT_WORK_MINUTES;
+          breakMinutes = typeof saved.breakMinutes === "number" ? saved.breakMinutes : DEFAULT_BREAK_MINUTES;
+          logs = Array.isArray(saved.logs) ? saved.logs : [];
+          sprintCount = typeof saved.sprintCount === "number" ? saved.sprintCount : 1;
+          youtubeInputValue = typeof saved.youtubeInputValue === "string" ? saved.youtubeInputValue : "";
+          autoControlMusic = typeof saved.autoControlMusic === "boolean" ? saved.autoControlMusic : true;
+        }
+      } catch (e) {}
+      workMinutesInput.value = String(workMinutes);
+      breakMinutesInput.value = String(breakMinutes);
+      youtubeInput.value = youtubeInputValue;
+      autoControlCheckbox.checked = autoControlMusic;
+      secondsLeft = workMinutes * 60;
+    }
+
+    function playWorkEndAlarm() {
+      try {
+        const AudioCtx = window.AudioContext || window.webkitAudioContext;
+        if (!AudioCtx) return;
+        const ctx = new AudioCtx();
+        const beeps = [0, 0.18, 0.36, 0.7, 0.88, 1.06];
+        beeps.forEach((startAt, index) => {
+          const osc = ctx.createOscillator();
+          const g = ctx.createGain();
+          osc.type = "square";
+          osc.frequency.setValueAtTime(index < 3 ? 920 : 720, ctx.currentTime + startAt);
+          osc.connect(g);
+          g.connect(ctx.destination);
+          g.gain.setValueAtTime(0.0001, ctx.currentTime + startAt);
+          g.gain.exponentialRampToValueAtTime(0.35, ctx.currentTime + startAt + 0.01);
+          g.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + startAt + 0.13);
+          osc.start(ctx.currentTime + startAt);
+          osc.stop(ctx.currentTime + startAt + 0.14);
+        });
+        setTimeout(() => { try { ctx.close(); } catch (e) {} }, 1600);
+      } catch (e) {}
+    }
+
+    function playBackToWorkSound() {
+      try {
+        const AudioCtx = window.AudioContext || window.webkitAudioContext;
+        if (!AudioCtx) return;
+        const ctx = new AudioCtx();
+        const notes = [440, 554, 659, 880];
+        const starts = [0, 0.45, 0.9, 1.35];
+        const lengths = [0.18, 0.18, 0.18, 0.32];
+        notes.forEach((frequency, index) => {
+          const osc = ctx.createOscillator();
+          const g = ctx.createGain();
+          const startAt = starts[index];
+          const endAt = startAt + lengths[index];
+          osc.type = index === 3 ? "sawtooth" : "sine";
+          osc.frequency.setValueAtTime(frequency, ctx.currentTime + startAt);
+          osc.connect(g);
+          g.connect(ctx.destination);
+          g.gain.setValueAtTime(0.0001, ctx.currentTime + startAt);
+          g.gain.exponentialRampToValueAtTime(0.24, ctx.currentTime + startAt + 0.02);
+          g.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + endAt);
+          osc.start(ctx.currentTime + startAt);
+          osc.stop(ctx.currentTime + endAt + 0.02);
+        });
+        setTimeout(() => { try { ctx.close(); } catch (e) {} }, 2200);
+      } catch (e) {}
+    }
+
+    function parseYouTubeInput(input) {
+      const value = String(input || "").trim();
+      if (!value) return {};
+      if (!value.includes("http")) {
+        if (value.startsWith("PL") || value.startsWith("UU")) return { playlistId: value };
+        if (/^[a-zA-Z0-9_-]{11}$/.test(value)) return { videoId: value };
+        return {};
+      }
+      try {
+        const url = new URL(value);
+        const videoId = url.searchParams.get("v") || undefined;
+        const playlistId = url.searchParams.get("list") || undefined;
+        if (!videoId && !playlistId && (url.hostname.includes("youtu.be") || url.pathname.includes("/embed/"))) {
+          const parts = url.pathname.split("/").filter(Boolean);
+          const guessed = parts[parts.length - 1];
+          if (guessed) return { videoId: guessed, playlistId };
+        }
+        return { videoId, playlistId };
+      } catch (e) {
+        return {};
+      }
+    }
+
+    function renderYouTubePlaceholder(message, isNotice = false) {
+      youtubeWrap.innerHTML = `<div class="${isNotice ? 'notice' : 'empty'}">${escapeHtml(message)}</div>`;
+    }
+
+    function setPlayerVolume() {
+      try {
+        if (player && typeof player.setVolume === "function") {
+          player.setVolume(80);
+        }
+      } catch (e) {}
+    }
+
+    function createPlayerFromInput() {
+      youtubeInputValue = youtubeInput.value.trim();
+      saveState();
+
+      const raw = youtubeInputValue;
+      if (raw.includes("music.youtube.com")) {
+        renderYouTubePlaceholder("YouTube Music-links kan ikke bruges her. Åbn den samme playliste på almindelig youtube.com og brug det link i stedet.", true);
+        return;
+      }
+      if (raw.includes("list=RD") || raw.includes("RDCLAK")) {
+        renderYouTubePlaceholder("RD / RDCLAK auto-mix kan ikke embeddes. Brug en almindelig YouTube-playliste eller en normal video.", true);
+        return;
       }
 
-      const nextMode = currentMode === "work" ? "break" : "work";
-      const nextSeconds = nextMode === "work" ? WORK_MINUTES * 60 : BREAK_MINUTES * 60;
+      const parsed = parseYouTubeInput(raw);
+      if (!parsed.videoId && !parsed.playlistId) {
+        renderYouTubePlaceholder("Kunne ikke læse linket. Prøv et almindeligt YouTube-link eller playlist-link.");
+        return;
+      }
 
-      activeModeRef.current = nextMode;
-      setMode(nextMode);
-      setSecondsLeft(nextSeconds);
-      endTimeRef.current = Date.now() + nextSeconds * 1000;
-    };
+      youtubeWrap.innerHTML = '<div id="youtubePlayer"></div>';
 
-    const syncTimer = () => {
-      if (!endTimeRef.current) return;
+      if (!ytApiReady || !window.YT || !window.YT.Player) {
+        renderYouTubePlaceholder("YouTube API er ikke klar endnu. Klik Indlæs embed igen om et øjeblik.");
+        return;
+      }
 
-      const remainingMs = endTimeRef.current - Date.now();
+      try {
+        if (player && typeof player.destroy === "function") {
+          player.destroy();
+        }
+      } catch (e) {}
+
+      const config = {
+        height: "220",
+        width: "100%",
+        playerVars: {
+          rel: 0,
+          playsinline: 1,
+          enablejsapi: 1,
+          origin: window.location.origin
+        },
+        events: {
+          onReady: function () {
+            setPlayerVolume();
+          }
+        }
+      };
+
+      if (parsed.playlistId && parsed.videoId) {
+        config.videoId = parsed.videoId;
+        config.playerVars.list = parsed.playlistId;
+      } else if (parsed.playlistId) {
+        config.playerVars.listType = "playlist";
+        config.playerVars.list = parsed.playlistId;
+      } else if (parsed.videoId) {
+        config.videoId = parsed.videoId;
+      }
+
+      player = new YT.Player("youtubePlayer", config);
+      setTimeout(setPlayerVolume, 600);
+      setTimeout(setPlayerVolume, 1800);
+      setTimeout(setPlayerVolume, 3500);
+    }
+
+    function pauseMusicNow() {
+      try {
+        if (player && typeof player.pauseVideo === "function") {
+          player.pauseVideo();
+        }
+      } catch (e) {}
+    }
+
+    function playMusicNow() {
+      try {
+        if (player && typeof player.playVideo === "function") {
+          player.playVideo();
+          setTimeout(setPlayerVolume, 500);
+        }
+      } catch (e) {}
+    }
+
+    function updateUI() {
+      const total = mode === "work" ? workMinutes * 60 : breakMinutes * 60;
+      const progress = ((total - secondsLeft) / total) * 100;
+      sprintBadge.textContent = `Sprint ${sprintCount}`;
+      modeLabel.textContent = mode === "work" ? "Fokus" : "Pause";
+      timerDisplay.textContent = formatTime(secondsLeft);
+      progressBar.style.width = `${Math.max(0, Math.min(100, progress))}%`;
+      progressBar.style.background = mode === "work" ? "var(--work)" : "var(--break)";
+      startPauseBtn.textContent = running ? "Pause" : "Start";
+      updateTabAppearance();
+      renderLogs();
+    }
+
+    function renderLogs() {
+      if (!logs.length) {
+        logContainer.innerHTML = '<div class="empty">Ingen noter endnu. Start et sprint og skriv, hvad du fik lavet.</div>';
+        return;
+      }
+
+      logContainer.innerHTML = `<div class="log-list">${logs.map(item => `
+        <div class="log-item">
+          <div class="row-between">
+            <div>
+              <div class="log-title">${escapeHtml(item.title)}</div>
+              <div class="log-meta">Sprint ${item.sprint} · ${escapeHtml(item.createdAt)}</div>
+            </div>
+            <button class="ghost" onclick="deleteLog(${item.id})">Slet</button>
+          </div>
+          ${item.notes ? `<div class="log-notes">${escapeHtml(item.notes)}</div>` : ""}
+        </div>
+      `).join("")}</div>`;
+    }
+
+    function finishCycle() {
+      if (mode === "work") {
+        if (autoControlMusic) pauseMusicNow();
+        playWorkEndAlarm();
+        sprintCount += 1;
+      } else {
+        playBackToWorkSound();
+        if (autoControlMusic) playMusicNow();
+      }
+
+      mode = mode === "work" ? "break" : "work";
+      secondsLeft = mode === "work" ? workMinutes * 60 : breakMinutes * 60;
+      endTime = Date.now() + secondsLeft * 1000;
+      updateUI();
+      saveState();
+    }
+
+    function syncTimer() {
+      if (!running || !endTime) return;
+      const remainingMs = endTime - Date.now();
       const remainingSeconds = Math.max(0, Math.ceil(remainingMs / 1000));
-
       if (remainingMs <= 0) {
         finishCycle();
         return;
       }
+      secondsLeft = remainingSeconds;
+      updateUI();
+    }
 
-      setSecondsLeft(remainingSeconds);
-    };
+    function startTimer() {
+      if (!endTime) {
+        endTime = Date.now() + secondsLeft * 1000;
+      }
+      if (timerId) clearInterval(timerId);
+      timerId = setInterval(syncTimer, 250);
+      syncTimer();
+    }
 
-    syncTimer();
-    const timer = window.setInterval(syncTimer, 250);
+    function stopTimer() {
+      if (timerId) clearInterval(timerId);
+      timerId = null;
+      endTime = null;
+    }
 
-    const handleVisibilityChange = () => {
+    function toggleRunning() {
+      running = !running;
+      if (running) startTimer();
+      else stopTimer();
+      updateUI();
+    }
+
+    function resetTimer() {
+      running = false;
+      stopTimer();
+      mode = "work";
+      secondsLeft = workMinutes * 60;
+      updateUI();
+    }
+
+    function switchMode() {
+      running = false;
+      stopTimer();
+      mode = mode === "work" ? "break" : "work";
+      secondsLeft = mode === "work" ? workMinutes * 60 : breakMinutes * 60;
+      updateUI();
+    }
+
+    function saveSettings() {
+      const nextWork = Math.max(1, Math.min(180, Number(workMinutesInput.value) || DEFAULT_WORK_MINUTES));
+      const nextBreak = Math.max(1, Math.min(60, Number(breakMinutesInput.value) || DEFAULT_BREAK_MINUTES));
+      workMinutes = nextWork;
+      breakMinutes = nextBreak;
+      workMinutesInput.value = String(workMinutes);
+      breakMinutesInput.value = String(breakMinutes);
+      resetTimer();
+      saveState();
+    }
+
+    function saveLog() {
+      const title = titleInput.value.trim();
+      const notes = notesInput.value.trim();
+      if (!title && !notes) return;
+
+      logs.unshift({
+        id: Date.now(),
+        sprint: sprintCount,
+        title: title || "Uden titel",
+        notes,
+        createdAt: new Date().toLocaleString("da-DK")
+      });
+
+      titleInput.value = "";
+      notesInput.value = "";
+      saveState();
+      updateUI();
+    }
+
+    function clearFields() {
+      titleInput.value = "";
+      notesInput.value = "";
+    }
+
+    function deleteLog(id) {
+      logs = logs.filter(item => item.id !== id);
+      saveState();
+      updateUI();
+    }
+    window.deleteLog = deleteLog;
+
+    function clearAll() {
+      logs = [];
+      sprintCount = 1;
+      clearFields();
+      resetTimer();
+      saveState();
+      updateUI();
+    }
+
+    function exportLogsToCsv() {
+      if (!logs.length) return;
+      const escapeCsv = (value) => `"${String(value).replace(/"/g, '""')}"`;
+      const rows = [
+        ["Sprint", "Title", "Notes", "Created At"],
+        ...logs.map(item => [item.sprint, item.title, item.notes, item.createdAt])
+      ];
+      const csv = rows.map(row => row.map(escapeCsv).join(",")).join("\n");
+      downloadFile(csv, `pomodoro-sprint-log-${new Date().toISOString().slice(0, 10)}.csv`, "text/csv;charset=utf-8;");
+    }
+
+    function exportLogsToMarkdown() {
+      if (!logs.length) return;
+      const generatedAt = new Date().toLocaleString("da-DK");
+      const markdown = [
+        "# Pomodoro sprint-log",
+        "",
+        `Eksporteret: ${generatedAt}`,
+        "",
+        ...logs.flatMap(item => [
+          `## Sprint ${item.sprint} — ${item.title}`,
+          "",
+          `- Timestamp: ${item.createdAt}`,
+          `- Titel: ${item.title}`,
+          "",
+          item.notes || "_Ingen noter_",
+          "",
+          "---",
+          ""
+        ])
+      ].join("\n");
+      const timestamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
+      downloadFile(markdown, `pomodoro-sprint-log-${timestamp}.md`, "text/markdown;charset=utf-8;");
+    }
+
+    function downloadFile(content, fileName, type) {
+      const blob = new Blob([content], { type });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = fileName;
+      link.click();
+      URL.revokeObjectURL(url);
+    }
+
+    function handleVisibilityChange() {
       if (!document.hidden) syncTimer();
+    }
+
+    window.onYouTubeIframeAPIReady = function () {
+      ytApiReady = true;
+      if (youtubeInputValue) {
+        createPlayerFromInput();
+      }
     };
+
+    document.getElementById("startPauseBtn").addEventListener("click", toggleRunning);
+    document.getElementById("resetBtn").addEventListener("click", resetTimer);
+    document.getElementById("switchModeBtn").addEventListener("click", switchMode);
+    document.getElementById("switchModeTop").addEventListener("click", switchMode);
+    document.getElementById("saveSettingsBtn").addEventListener("click", saveSettings);
+    document.getElementById("saveBtn").addEventListener("click", saveLog);
+    document.getElementById("clearFieldsBtn").addEventListener("click", clearFields);
+    document.getElementById("clearAllBtn").addEventListener("click", clearAll);
+    document.getElementById("exportCsvBtn").addEventListener("click", exportLogsToCsv);
+    document.getElementById("exportMdBtn").addEventListener("click", exportLogsToMarkdown);
+    document.getElementById("loadYoutubeBtn").addEventListener("click", createPlayerFromInput);
+    document.getElementById("playYoutubeBtn").addEventListener("click", playMusicNow);
+    document.getElementById("pauseYoutubeBtn").addEventListener("click", pauseMusicNow);
+
+    autoControlCheckbox.addEventListener("change", (e) => {
+      autoControlMusic = e.target.checked;
+      saveState();
+    });
+
+    youtubeInput.addEventListener("change", () => {
+      youtubeInputValue = youtubeInput.value.trim();
+      saveState();
+    });
 
     document.addEventListener("visibilitychange", handleVisibilityChange);
 
-    return () => {
-      window.clearInterval(timer);
-      document.removeEventListener("visibilitychange", handleVisibilityChange);
-    };
-  }, [running, secondsLeft]);
-
-  const parsedYouTube = useMemo(() => parseYouTubeInput(youtubeInput), [youtubeInput]);
-  const embedIssue = useMemo(() => getYouTubeEmbedIssue(parsedYouTube), [parsedYouTube]);
-  const embedUrl = useMemo(() => buildYouTubeEmbedUrl(youtubeInput), [youtubeInput]);
-
-  // 🔥 Feature C: YouTube volume control (80%)
-  const iframeRef = useRef<HTMLIFrameElement | null>(null);
-
-  useEffect(() => {
-    if (!iframeRef.current) return;
-
-    // Send postMessage til YouTube player
-    const setVolume = () => {
-      iframeRef.current?.contentWindow?.postMessage(
-        JSON.stringify({
-          event: "command",
-          func: "setVolume",
-          args: [80],
-        }),
-        "*"
-      );
-    };
-
-    // Forsøg flere gange (YouTube loader async)
-    const attempts = [500, 1500, 3000];
-    attempts.forEach((delay) => setTimeout(setVolume, delay));
-  }, [embedUrl]);
-
-  const progress = useMemo(() => {
-    const total = mode === "work" ? WORK_MINUTES * 60 : BREAK_MINUTES * 60;
-    return ((total - secondsLeft) / total) * 100;
-  }, [secondsLeft, mode]);
-
-  const saveLog = () => {
-    if (!title.trim() && !notes.trim()) return;
-
-    const newItem: LogItem = {
-      id: Date.now(),
-      sprint: sprintCount,
-      title: title.trim() || "Uden titel",
-      notes: notes.trim(),
-      createdAt: new Date().toLocaleString("da-DK"),
-    };
-
-    setLogs((prev) => [newItem, ...prev]);
-    setTitle("");
-    setNotes("");
-  };
-
-  const resetTimer = () => {
-    endTimeRef.current = null;
-    activeModeRef.current = "work";
-    setRunning(false);
-    setMode("work");
-    setSecondsLeft(WORK_MINUTES * 60);
-  };
-
-  const switchMode = () => {
-    const nextMode = mode === "work" ? "break" : "work";
-    endTimeRef.current = null;
-    activeModeRef.current = nextMode;
-    setMode(nextMode);
-    setSecondsLeft(nextMode === "work" ? WORK_MINUTES * 60 : BREAK_MINUTES * 60);
-    setRunning(false);
-  };
-
-  const deleteLog = (id: number) => {
-    setLogs((prev) => prev.filter((item) => item.id !== id));
-  };
-
-  const exportLogsToCsv = () => {
-    if (logs.length === 0) return;
-
-    const escapeCsv = (value: string | number) => `"${String(value).replace(/"/g, '""')}"`;
-    const rows: Array<Array<string | number>> = [
-      ["Sprint", "Title", "Notes", "Created At"],
-      ...logs.map((item) => [item.sprint, item.title, item.notes, item.createdAt]),
-    ];
-
-    const csv = rows.map((row) => row.map(escapeCsv).join(",")).join("\n");
-
-    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = `pomodoro-sprint-log-${new Date().toISOString().slice(0, 10)}.csv`;
-    link.click();
-    URL.revokeObjectURL(url);
-  };
-
-  const exportLogsToMarkdown = () => {
-    if (logs.length === 0) return;
-
-    const generatedAt = new Date().toLocaleString("da-DK");
-    const markdown = [
-      "# Pomodoro sprint-log",
-      "",
-      `Eksporteret: ${generatedAt}`,
-      "",
-      ...logs.flatMap((item) => [
-        `## Sprint ${item.sprint} — ${item.title}`,
-        "",
-        `- Timestamp: ${item.createdAt}`,
-        `- Titel: ${item.title}`,
-        "",
-        item.notes || "_Ingen noter_",
-        "",
-        "---",
-        "",
-      ]),
-    ].join("\n");
-
-    const blob = new Blob([markdown], { type: "text/markdown;charset=utf-8;" });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    const timestamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
-    link.href = url;
-    link.download = `pomodoro-sprint-log-${timestamp}.md`;
-    link.click();
-    URL.revokeObjectURL(url);
-  };
-
-  const clearAll = () => {
-    setLogs([]);
-    setSprintCount(1);
-    setTitle("");
-    setNotes("");
-    resetTimer();
-  };
-
-  return (
-    <div className="min-h-screen bg-slate-50 p-4 md:p-8">
-      <div className="mx-auto grid max-w-6xl gap-6 lg:grid-cols-[1.1fr_0.9fr]">
-        <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }}>
-          <Card className="rounded-2xl border-0 shadow-lg">
-            <CardHeader className="space-y-4 pb-2">
-              <div className="flex items-center justify-between gap-3">
-                <div>
-                  <CardTitle className="text-2xl">Pomodoro timer</CardTitle>
-                  <p className="text-sm text-slate-500">Med lille sprint-log til at skrive, hvad du fik lavet.</p>
-                </div>
-                <Badge className="rounded-full px-3 py-1 text-sm">Sprint {sprintCount}</Badge>
-              </div>
-            </CardHeader>
-
-            <CardContent className="space-y-6">
-              <div className="rounded-2xl bg-white p-6 shadow-sm">
-                <div className="mb-3 flex items-center justify-between text-sm text-slate-500">
-                  <span>{mode === "work" ? "Fokus" : "Pause"}</span>
-                  <button onClick={switchMode} className="underline underline-offset-4">
-                    Skift mode
-                  </button>
-                </div>
-
-                <div className="mb-4 text-center text-6xl font-semibold tracking-tight md:text-7xl">
-                  {formatTime(secondsLeft)}
-                </div>
-
-                <div className="h-3 overflow-hidden rounded-full bg-slate-100">
-                  <div className="h-full rounded-full bg-slate-900 transition-all" style={{ width: `${progress}%` }} />
-                </div>
-
-                <div className="mt-6 flex flex-wrap gap-3">
-                  <Button className="rounded-2xl" onClick={() => setRunning((value) => !value)}>
-                    {running ? <Pause className="mr-2 h-4 w-4" /> : <Play className="mr-2 h-4 w-4" />}
-                    {running ? "Pause" : "Start"}
-                  </Button>
-                  <Button variant="secondary" className="rounded-2xl" onClick={resetTimer}>
-                    <RotateCcw className="mr-2 h-4 w-4" />
-                    Reset
-                  </Button>
-                  <Button variant="outline" className="rounded-2xl" onClick={switchMode}>
-                    <TimerReset className="mr-2 h-4 w-4" />
-                    Fokus / pause
-                  </Button>
-                </div>
-              </div>
-
-              <div className="rounded-2xl bg-white p-5 shadow-sm">
-                <div className="mb-4 flex items-center gap-2">
-                  <h2 className="text-lg font-semibold">YouTube musik i timeren</h2>
-                </div>
-                <div className="grid gap-3">
-                  <Input
-                    value={youtubeInput}
-                    onChange={(e) => setYoutubeInput(e.target.value)}
-                    placeholder="Indsæt YouTube video- eller playlist-link"
-                    className="rounded-xl"
-                  />
-                  <div className="flex items-center gap-2 text-sm text-slate-600">
-                    <input
-                      id="auto-control-music"
-                      type="checkbox"
-                      checked={autoControlMusic}
-                      onChange={(e) => setAutoControlMusic(e.target.checked)}
-                    />
-                    <label htmlFor="auto-control-music">
-                      Gem dette valg til lokal version. I preview tester vi kun selve embed.
-                    </label>
-                  </div>
-                  <div className="rounded-2xl border bg-slate-50 p-3">
-                    {embedIssue ? (
-                      <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
-                        {embedIssue}
-                      </div>
-                    ) : embedUrl ? (
-                      <iframe
-                        ref={iframeRef}
-                        title="YouTube embed"
-                        src={embedUrl}
-                        className="h-[220px] w-full rounded-xl"
-                        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                        referrerPolicy="strict-origin-when-cross-origin"
-                        allowFullScreen
-                      />
-                    ) : (
-                      <p className="text-sm text-slate-500">
-                        Indsæt et almindeligt YouTube-link eller playlist-link for at embedde musikken her i timeren.
-                      </p>
-                    )}
-                  </div>
-                  <p className="text-xs text-slate-500">
-                    Preview bruger en simpel sikker embed. Brug almindelige youtube.com-links. Auto pause/play kobles bedst på i den lokale HTML-version.
-                  </p>
-                  <p className="text-xs text-slate-500">
-                    Hurtig test: prøv en normal video eller en playlist, der starter med PL, i stedet for et RD eller RDCLAK-link.
-                  </p>
-                </div>
-              </div>
-
-              <div className="rounded-2xl bg-white p-5 shadow-sm">
-                <div className="mb-4 flex items-center gap-2">
-                  <CheckCircle2 className="h-5 w-5" />
-                  <h2 className="text-lg font-semibold">Log for sprintet</h2>
-                </div>
-                <div className="grid gap-3">
-                  <Input
-                    value={title}
-                    onChange={(e) => setTitle(e.target.value)}
-                    placeholder="Hvad arbejdede du på?"
-                    className="rounded-xl"
-                  />
-                  <Textarea
-                    value={notes}
-                    onChange={(e) => setNotes(e.target.value)}
-                    placeholder="Hvad fik du lavet i sprintet?"
-                    className="min-h-[120px] rounded-xl"
-                  />
-                  <div className="flex flex-wrap gap-3">
-                    <Button onClick={saveLog} className="rounded-2xl">
-                      Gem note
-                    </Button>
-                    <Button
-                      variant="outline"
-                      onClick={() => {
-                        setTitle("");
-                        setNotes("");
-                      }}
-                      className="rounded-2xl"
-                    >
-                      Ryd felter
-                    </Button>
-                  </div>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        </motion.div>
-
-        <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.08 }}>
-          <Card className="rounded-2xl border-0 shadow-lg">
-            <CardHeader className="flex flex-row items-center justify-between">
-              <div className="flex items-center gap-2 flex-wrap">
-                <CardTitle className="text-xl">Tidligere sprint-noter</CardTitle>
-                <Button variant="outline" size="sm" onClick={exportLogsToMarkdown} className="rounded-xl">
-                  <FileText className="mr-2 h-4 w-4" />
-                  Eksportér .md
-                </Button>
-                <Button variant="outline" size="sm" onClick={exportLogsToCsv} className="rounded-xl">
-                  <Download className="mr-2 h-4 w-4" />
-                  Eksportér CSV
-                </Button>
-              </div>
-              <Button variant="ghost" size="sm" onClick={clearAll} className="rounded-xl text-slate-500">
-                <Trash2 className="mr-2 h-4 w-4" />
-                Ryd alt
-              </Button>
-            </CardHeader>
-
-            <CardContent>
-              <div className="space-y-3">
-                {logs.length === 0 ? (
-                  <div className="rounded-2xl border border-dashed p-6 text-sm text-slate-500">
-                    Ingen noter endnu. Start et sprint og skriv, hvad du fik lavet.
-                  </div>
-                ) : (
-                  logs.map((item) => (
-                    <div key={item.id} className="rounded-2xl border bg-white p-4 shadow-sm">
-                      <div className="mb-2 flex items-start justify-between gap-3">
-                        <div>
-                          <div className="font-medium">{item.title}</div>
-                          <div className="text-xs text-slate-500">
-                            Sprint {item.sprint} · {item.createdAt}
-                          </div>
-                        </div>
-                        <Button variant="ghost" size="sm" onClick={() => deleteLog(item.id)}>
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      </div>
-                      {item.notes ? <p className="text-sm leading-6 text-slate-700">{item.notes}</p> : null}
-                    </div>
-                  ))
-                )}
-              </div>
-            </CardContent>
-          </Card>
-        </motion.div>
-      </div>
-    </div>
-  );
-}
+    loadState();
+    updateUI();
+  </script>
+</body>
+</html>
