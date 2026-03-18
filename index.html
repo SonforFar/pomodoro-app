@@ -15,8 +15,12 @@
       --soft: #f1f5f9;
       --btn: #0f172a;
       --btnText: #ffffff;
-      --work: #111827;
-      --break: #16a34a;
+      --focus: #16a34a;
+      --pause: #f59e0b;
+      --focus-soft: rgba(22, 163, 74, 0.16);
+      --pause-soft: rgba(245, 158, 11, 0.18);
+      --focus-strong: rgba(22, 163, 74, 0.55);
+      --pause-strong: rgba(245, 158, 11, 0.55);
     }
     * { box-sizing: border-box; }
     body {
@@ -63,6 +67,41 @@
       padding: 22px;
       box-shadow: 0 4px 16px rgba(15, 23, 42, 0.05);
       margin-top: 18px;
+      transition: background 0.25s ease, box-shadow 0.25s ease, border-color 0.25s ease;
+    }
+    .timer-panel {
+      border: 1px solid transparent;
+    }
+    .timer-panel.focus-mode {
+      background: linear-gradient(180deg, rgba(22, 163, 74, 0.10), rgba(22, 163, 74, 0.16));
+      border-color: rgba(22, 163, 74, 0.28);
+      box-shadow: 0 8px 24px rgba(22, 163, 74, 0.12);
+    }
+    .timer-panel.pause-mode {
+      background: linear-gradient(180deg, rgba(245, 158, 11, 0.12), rgba(245, 158, 11, 0.18));
+      border-color: rgba(245, 158, 11, 0.28);
+      box-shadow: 0 8px 24px rgba(245, 158, 11, 0.13);
+    }
+    .timer-panel.pause-pulse {
+      animation: pausePulse 1.6s ease-in-out infinite;
+    }
+    .timer-panel.pause-warning {
+      animation: pauseWarning 0.95s ease-in-out infinite;
+    }
+    .timer-panel.pause-danger {
+      animation: pauseDanger 0.5s ease-in-out infinite;
+    }
+    @keyframes pausePulse {
+      0%, 100% { transform: scale(1); box-shadow: 0 8px 24px rgba(245, 158, 11, 0.10); }
+      50% { transform: scale(1.01); box-shadow: 0 10px 28px rgba(245, 158, 11, 0.20); }
+    }
+    @keyframes pauseWarning {
+      0%, 100% { transform: scale(1); box-shadow: 0 8px 24px rgba(245, 158, 11, 0.11); }
+      50% { transform: scale(1.014); box-shadow: 0 12px 30px rgba(245, 158, 11, 0.26); }
+    }
+    @keyframes pauseDanger {
+      0%, 100% { transform: scale(1); box-shadow: 0 8px 24px rgba(245, 158, 11, 0.10); }
+      50% { transform: scale(1.018); box-shadow: 0 14px 34px rgba(245, 158, 11, 0.34); }
     }
     .timer {
       text-align: center;
@@ -224,7 +263,7 @@
         </div>
       </div>
 
-      <div class="inner">
+      <div class="inner timer-panel" id="timerPanel">
         <div class="row-between muted" style="font-size:14px;">
           <span id="modeLabel">Fokus</span>
           <button class="text-link" id="switchModeTop">Skift mode</button>
@@ -319,6 +358,7 @@
     const modeLabel = document.getElementById("modeLabel");
     const timerDisplay = document.getElementById("timerDisplay");
     const progressBar = document.getElementById("progressBar");
+    const timerPanel = document.getElementById("timerPanel");
     const startPauseBtn = document.getElementById("startPauseBtn");
     const titleInput = document.getElementById("titleInput");
     const notesInput = document.getElementById("notesInput");
@@ -345,14 +385,44 @@
         .replace(/'/g, "&#039;");
     }
 
+    function getPauseVisualLevel() {
+      if (mode !== "break") return "none";
+      if (secondsLeft <= 10) return "danger";
+      if (secondsLeft <= 30) return "warning";
+      return "pulse";
+    }
+
     function updateTabAppearance() {
       const time = formatTime(secondsLeft);
       const label = mode === "work" ? "FOKUS" : "PAUSE";
-      document.title = `${time} • ${label}`;
+      const pauseLevel = getPauseVisualLevel();
+      const titleIcon = mode === "work"
+        ? "🟢"
+        : pauseLevel === "danger"
+          ? (Math.floor(Date.now() / 250) % 2 === 0 ? "🟠" : "⚠️")
+          : pauseLevel === "warning"
+            ? (Math.floor(Date.now() / 500) % 2 === 0 ? "🟠" : "⏳")
+            : (Math.floor(Date.now() / 800) % 2 === 0 ? "🟠" : "◌");
+      document.title = `${titleIcon} ${time} • ${label}`;
 
       if (faviconEl) {
-        const color = mode === "work" ? "%23111827" : "%2316a34a";
-        faviconEl.href = `data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ccircle cx='50' cy='50' r='50' fill='${color}' /%3E%3C/svg%3E`;
+        let fill = "%2316a34a";
+        let radius = "40";
+        let opacity = "1";
+        if (mode === "break") {
+          fill = "%23f59e0b";
+          if (pauseLevel === "danger") {
+            radius = Math.floor(Date.now() / 250) % 2 === 0 ? "42" : "24";
+            opacity = Math.floor(Date.now() / 250) % 2 === 0 ? "1" : "0.45";
+          } else if (pauseLevel === "warning") {
+            radius = Math.floor(Date.now() / 500) % 2 === 0 ? "40" : "28";
+            opacity = Math.floor(Date.now() / 500) % 2 === 0 ? "1" : "0.6";
+          } else {
+            radius = Math.floor(Date.now() / 900) % 2 === 0 ? "38" : "30";
+            opacity = Math.floor(Date.now() / 900) % 2 === 0 ? "1" : "0.72";
+          }
+        }
+        faviconEl.href = `data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='20' fill='%23f8fafc'/%3E%3Ccircle cx='50' cy='50' r='${radius}' fill='${fill}' fill-opacity='${opacity}' /%3E%3C/svg%3E`;
       }
     }
 
@@ -560,7 +630,19 @@
       modeLabel.textContent = mode === "work" ? "Fokus" : "Pause";
       timerDisplay.textContent = formatTime(secondsLeft);
       progressBar.style.width = `${Math.max(0, Math.min(100, progress))}%`;
-      progressBar.style.background = mode === "work" ? "var(--work)" : "var(--break)";
+      progressBar.style.background = mode === "work" ? "var(--focus)" : "var(--pause)";
+      if (timerPanel) {
+        timerPanel.classList.remove("focus-mode", "pause-mode", "pause-pulse", "pause-warning", "pause-danger");
+        if (mode === "work") {
+          timerPanel.classList.add("focus-mode");
+        } else {
+          timerPanel.classList.add("pause-mode");
+          const pauseLevel = getPauseVisualLevel();
+          if (pauseLevel === "pulse") timerPanel.classList.add("pause-pulse");
+          if (pauseLevel === "warning") timerPanel.classList.add("pause-warning");
+          if (pauseLevel === "danger") timerPanel.classList.add("pause-danger");
+        }
+      }
       startPauseBtn.textContent = running ? "Pause" : "Start";
       updateTabAppearance();
       renderLogs();
