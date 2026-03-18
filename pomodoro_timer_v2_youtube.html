@@ -1,0 +1,702 @@
+
+<!doctype html>
+<html lang="da">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Pomodoro Timer v2</title>
+  <style>
+    :root {
+      --bg: #f8fafc;
+      --card: #ffffff;
+      --text: #0f172a;
+      --muted: #64748b;
+      --line: #e2e8f0;
+      --soft: #f1f5f9;
+      --btn: #0f172a;
+      --btnText: #ffffff;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: var(--bg);
+      color: var(--text);
+    }
+    .wrap {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 20px;
+      display: grid;
+      grid-template-columns: 1.1fr 0.9fr;
+      gap: 24px;
+    }
+    .card {
+      background: var(--card);
+      border-radius: 24px;
+      box-shadow: 0 10px 30px rgba(15, 23, 42, 0.08);
+      padding: 24px;
+    }
+    .topline, .row-between {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+    h1, h2, h3, p { margin: 0; }
+    h1 { font-size: 32px; }
+    h2 { font-size: 22px; }
+    .muted { color: var(--muted); }
+    .badge {
+      background: var(--soft);
+      border-radius: 999px;
+      padding: 8px 14px;
+      font-size: 14px;
+      font-weight: 600;
+    }
+    .inner {
+      background: #fff;
+      border-radius: 20px;
+      padding: 22px;
+      box-shadow: 0 4px 16px rgba(15, 23, 42, 0.05);
+      margin-top: 18px;
+    }
+    .timer {
+      text-align: center;
+      font-size: 76px;
+      font-weight: 700;
+      letter-spacing: -2px;
+      margin: 16px 0;
+    }
+    .progress {
+      height: 12px;
+      background: var(--soft);
+      border-radius: 999px;
+      overflow: hidden;
+    }
+    .progress-bar {
+      height: 100%;
+      width: 0%;
+      background: var(--text);
+      transition: width 0.4s ease;
+    }
+    .buttons {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      margin-top: 20px;
+    }
+    button {
+      border: 0;
+      border-radius: 16px;
+      padding: 12px 16px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      background: var(--btn);
+      color: var(--btnText);
+    }
+    button.secondary {
+      background: #e2e8f0;
+      color: var(--text);
+    }
+    button.outline, button.ghost {
+      background: transparent;
+      color: var(--text);
+      border: 1px solid var(--line);
+    }
+    button.ghost {
+      border: 0;
+      color: var(--muted);
+    }
+    .text-link {
+      background: none;
+      border: none;
+      padding: 0;
+      text-decoration: underline;
+      color: var(--muted);
+      cursor: pointer;
+      font: inherit;
+    }
+    .field-group {
+      display: grid;
+      gap: 12px;
+      margin-top: 16px;
+    }
+    input, textarea {
+      width: 100%;
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      padding: 14px 15px;
+      font: inherit;
+      background: #fff;
+      color: var(--text);
+    }
+    textarea {
+      min-height: 130px;
+      resize: vertical;
+    }
+    .log-list {
+      display: grid;
+      gap: 12px;
+      margin-top: 16px;
+    }
+    .log-item {
+      border: 1px solid var(--line);
+      border-radius: 20px;
+      padding: 16px;
+      background: #fff;
+      box-shadow: 0 4px 14px rgba(15, 23, 42, 0.04);
+    }
+    .log-title { font-weight: 700; margin-bottom: 4px; }
+    .log-meta { color: var(--muted); font-size: 12px; }
+    .log-notes { margin-top: 10px; line-height: 1.6; white-space: pre-wrap; }
+    .empty {
+      border: 1px dashed var(--line);
+      border-radius: 18px;
+      padding: 20px;
+      color: var(--muted);
+      margin-top: 16px;
+    }
+    .small { font-size: 12px; color: var(--muted); line-height: 1.5; }
+    iframe {
+      width: 100%;
+      height: 220px;
+      border: 0;
+      border-radius: 16px;
+      background: #000;
+    }
+    @media (max-width: 900px) {
+      .wrap { grid-template-columns: 1fr; }
+      .timer { font-size: 58px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <section class="card">
+      <div class="topline">
+        <div>
+          <h1>Pomodoro timer</h1>
+          <p class="muted">Lokal v2 med sprint-log og YouTube embed.</p>
+        </div>
+        <div class="badge" id="sprintBadge">Sprint 1</div>
+      </div>
+
+      <div class="inner">
+        <div class="row-between muted" style="font-size:14px;">
+          <span id="modeLabel">Fokus</span>
+          <button class="text-link" id="switchModeTop">Skift mode</button>
+        </div>
+
+        <div class="timer" id="timerDisplay">25:00</div>
+
+        <div class="progress">
+          <div class="progress-bar" id="progressBar"></div>
+        </div>
+
+        <div class="buttons">
+          <button id="startPauseBtn">Start</button>
+          <button class="secondary" id="resetBtn">Reset</button>
+          <button class="outline" id="switchModeBtn">Fokus / pause</button>
+        </div>
+      </div>
+
+      <div class="inner">
+        <div class="row-between">
+          <h2>YouTube musik i timeren</h2>
+        </div>
+        <div class="field-group">
+          <input id="youtubeInput" placeholder="Indsæt YouTube video- eller playlist-link" />
+          <label class="small">
+            <input id="autoControlMusic" type="checkbox" checked />
+            Pause musik når fokus slutter, og start igen når pausen slutter
+          </label>
+          <div class="buttons" style="margin-top:0;">
+            <button class="outline" id="loadYoutubeBtn">Indlæs embed</button>
+            <button class="outline" id="playYoutubeBtn">Start musik nu</button>
+            <button class="outline" id="pauseYoutubeBtn">Pause musik nu</button>
+          </div>
+          <div id="youtubeWrap">
+            <div class="empty">Indsæt et almindeligt YouTube-link eller playlist-link og klik “Indlæs embed”.</div>
+          </div>
+          <p class="small">Tip: Du skal typisk selv trykke play første gang. Almindelige YouTube-links virker bedst. Nogle browsere kan blokere autoplay efter pause.</p>
+        </div>
+      </div>
+
+      <div class="inner">
+        <div class="row-between">
+          <h2>Log for sprintet</h2>
+        </div>
+
+        <div class="field-group">
+          <input id="titleInput" placeholder="Hvad arbejdede du på?" />
+          <textarea id="notesInput" placeholder="Hvad fik du lavet i sprintet?"></textarea>
+          <div class="buttons">
+            <button id="saveBtn">Gem note</button>
+            <button class="outline" id="clearFieldsBtn">Ryd felter</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <aside class="card">
+      <div class="row-between">
+        <div class="buttons" style="margin-top:0;">
+          <h2 style="margin-right:6px;">Tidligere sprint-noter</h2>
+          <button class="outline" id="exportMdBtn">Eksportér .md</button>
+          <button class="outline" id="exportCsvBtn">Eksportér CSV</button>
+        </div>
+        <button class="ghost" id="clearAllBtn">Ryd alt</button>
+      </div>
+
+      <div id="logContainer"></div>
+    </aside>
+  </div>
+
+  <script src="https://www.youtube.com/iframe_api"></script>
+  <script>
+    const WORK_MINUTES = 25;
+    const BREAK_MINUTES = 5;
+    const STORAGE_KEY = "pomodoro-sprint-log-v2";
+
+    let mode = "work";
+    let secondsLeft = WORK_MINUTES * 60;
+    let running = false;
+    let sprintCount = 1;
+    let logs = [];
+    let timerId = null;
+    let endTime = null;
+
+    let player = null;
+    let youtubeInputValue = "";
+    let autoControlMusic = true;
+
+    const sprintBadge = document.getElementById("sprintBadge");
+    const modeLabel = document.getElementById("modeLabel");
+    const timerDisplay = document.getElementById("timerDisplay");
+    const progressBar = document.getElementById("progressBar");
+    const startPauseBtn = document.getElementById("startPauseBtn");
+    const titleInput = document.getElementById("titleInput");
+    const notesInput = document.getElementById("notesInput");
+    const logContainer = document.getElementById("logContainer");
+    const youtubeInput = document.getElementById("youtubeInput");
+    const youtubeWrap = document.getElementById("youtubeWrap");
+    const autoControlCheckbox = document.getElementById("autoControlMusic");
+
+    function formatTime(totalSeconds) {
+      const mins = String(Math.floor(totalSeconds / 60)).padStart(2, "0");
+      const secs = String(totalSeconds % 60).padStart(2, "0");
+      return `${mins}:${secs}`;
+    }
+
+    function escapeHtml(text) {
+      return String(text)
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#039;");
+    }
+
+    function saveState() {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify({
+        logs,
+        sprintCount,
+        youtubeInputValue,
+        autoControlMusic
+      }));
+    }
+
+    function loadState() {
+      try {
+        const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || "null");
+        if (saved) {
+          logs = Array.isArray(saved.logs) ? saved.logs : [];
+          sprintCount = typeof saved.sprintCount === "number" ? saved.sprintCount : 1;
+          youtubeInputValue = typeof saved.youtubeInputValue === "string" ? saved.youtubeInputValue : "";
+          autoControlMusic = typeof saved.autoControlMusic === "boolean" ? saved.autoControlMusic : true;
+        }
+      } catch (e) {}
+      youtubeInput.value = youtubeInputValue;
+      autoControlCheckbox.checked = autoControlMusic;
+    }
+
+    function playWorkEndAlarm() {
+      try {
+        const AudioCtx = window.AudioContext || window.webkitAudioContext;
+        if (!AudioCtx) return;
+        const ctx = new AudioCtx();
+        const gain = ctx.createGain();
+        gain.connect(ctx.destination);
+        const beeps = [0, 0.18, 0.36, 0.7, 0.88, 1.06];
+        beeps.forEach((startAt, index) => {
+          const osc = ctx.createOscillator();
+          const g = ctx.createGain();
+          osc.type = "square";
+          osc.frequency.setValueAtTime(index < 3 ? 920 : 720, ctx.currentTime + startAt);
+          osc.connect(g);
+          g.connect(gain);
+          g.gain.setValueAtTime(0.0001, ctx.currentTime + startAt);
+          g.gain.exponentialRampToValueAtTime(0.22, ctx.currentTime + startAt + 0.01);
+          g.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + startAt + 0.13);
+          osc.start(ctx.currentTime + startAt);
+          osc.stop(ctx.currentTime + startAt + 0.14);
+        });
+        setTimeout(() => { try { ctx.close(); } catch (e) {} }, 1600);
+      } catch (e) {}
+    }
+
+    function playBackToWorkSound() {
+      try {
+        const AudioCtx = window.AudioContext || window.webkitAudioContext;
+        if (!AudioCtx) return;
+        const ctx = new AudioCtx();
+        const gain = ctx.createGain();
+        gain.connect(ctx.destination);
+        const notes = [440, 554, 659, 880];
+        const starts = [0, 0.45, 0.9, 1.35];
+        const lengths = [0.18, 0.18, 0.18, 0.32];
+        notes.forEach((frequency, index) => {
+          const osc = ctx.createOscillator();
+          const g = ctx.createGain();
+          const startAt = starts[index];
+          const endAt = startAt + lengths[index];
+          osc.type = index === 3 ? "sawtooth" : "sine";
+          osc.frequency.setValueAtTime(frequency, ctx.currentTime + startAt);
+          osc.connect(g);
+          g.connect(gain);
+          g.gain.setValueAtTime(0.0001, ctx.currentTime + startAt);
+          g.gain.exponentialRampToValueAtTime(0.18, ctx.currentTime + startAt + 0.02);
+          g.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + endAt);
+          osc.start(ctx.currentTime + startAt);
+          osc.stop(ctx.currentTime + endAt + 0.02);
+        });
+        setTimeout(() => { try { ctx.close(); } catch (e) {} }, 2200);
+      } catch (e) {}
+    }
+
+    function parseYouTubeInput(input) {
+      const value = String(input || "").trim();
+      if (!value) return {};
+
+      if (!value.includes("http")) {
+        if (value.startsWith("PL") || value.startsWith("UU") || value.startsWith("RD")) {
+          return { playlistId: value };
+        }
+        if (/^[a-zA-Z0-9_-]{11}$/.test(value)) {
+          return { videoId: value };
+        }
+        return {};
+      }
+
+      try {
+        const url = new URL(value);
+        const videoId = url.searchParams.get("v") || undefined;
+        const playlistId = url.searchParams.get("list") || undefined;
+
+        if (!videoId && !playlistId && (url.hostname.includes("youtu.be") || url.pathname.includes("/embed/"))) {
+          const parts = url.pathname.split("/").filter(Boolean);
+          const guessed = parts[parts.length - 1];
+          if (guessed) return { videoId: guessed, playlistId };
+        }
+
+        return { videoId, playlistId };
+      } catch (e) {
+        return {};
+      }
+    }
+
+    function renderYouTubePlaceholder(message) {
+      youtubeWrap.innerHTML = `<div class="empty">${escapeHtml(message)}</div>`;
+    }
+
+    function createPlayerFromInput() {
+      youtubeInputValue = youtubeInput.value.trim();
+      saveState();
+
+      const parsed = parseYouTubeInput(youtubeInputValue);
+      if (!parsed.videoId && !parsed.playlistId) {
+        renderYouTubePlaceholder("Kunne ikke læse linket. Prøv et almindeligt YouTube-link eller playlist-link.");
+        return;
+      }
+
+      youtubeWrap.innerHTML = '<div id="youtubePlayer"></div>';
+
+      if (!window.YT || !window.YT.Player) {
+        renderYouTubePlaceholder("YouTube API er ikke klar endnu. Prøv igen om et øjeblik.");
+        return;
+      }
+
+      try {
+        if (player && typeof player.destroy === "function") {
+          player.destroy();
+        }
+      } catch (e) {}
+
+      const config = {
+        height: "220",
+        width: "100%",
+        playerVars: {
+          rel: 0,
+          playsinline: 1
+        }
+      };
+
+      if (parsed.playlistId && parsed.videoId) {
+        config.videoId = parsed.videoId;
+        config.playerVars.list = parsed.playlistId;
+      } else if (parsed.playlistId) {
+        config.playerVars.listType = "playlist";
+        config.playerVars.list = parsed.playlistId;
+      } else if (parsed.videoId) {
+        config.videoId = parsed.videoId;
+      }
+
+      player = new YT.Player("youtubePlayer", config);
+    }
+
+    function pauseMusicNow() {
+      try {
+        if (player && typeof player.pauseVideo === "function") {
+          player.pauseVideo();
+        }
+      } catch (e) {}
+    }
+
+    function playMusicNow() {
+      try {
+        if (player && typeof player.playVideo === "function") {
+          player.playVideo();
+        }
+      } catch (e) {}
+    }
+
+    function updateUI() {
+      const total = mode === "work" ? WORK_MINUTES * 60 : BREAK_MINUTES * 60;
+      const progress = ((total - secondsLeft) / total) * 100;
+      sprintBadge.textContent = `Sprint ${sprintCount}`;
+      modeLabel.textContent = mode === "work" ? "Fokus" : "Pause";
+      timerDisplay.textContent = formatTime(secondsLeft);
+      progressBar.style.width = `${progress}%`;
+      startPauseBtn.textContent = running ? "Pause" : "Start";
+      renderLogs();
+    }
+
+    function renderLogs() {
+      if (!logs.length) {
+        logContainer.innerHTML = '<div class="empty">Ingen noter endnu. Start et sprint og skriv, hvad du fik lavet.</div>';
+        return;
+      }
+
+      logContainer.innerHTML = `<div class="log-list">${logs.map(item => `
+        <div class="log-item">
+          <div class="row-between">
+            <div>
+              <div class="log-title">${escapeHtml(item.title)}</div>
+              <div class="log-meta">Sprint ${item.sprint} · ${escapeHtml(item.createdAt)}</div>
+            </div>
+            <button class="ghost" onclick="deleteLog(${item.id})">Slet</button>
+          </div>
+          ${item.notes ? `<div class="log-notes">${escapeHtml(item.notes)}</div>` : ""}
+        </div>
+      `).join("")}</div>`;
+    }
+
+    function finishCycle() {
+      if (mode === "work") {
+        playWorkEndAlarm();
+        if (autoControlMusic) pauseMusicNow();
+        sprintCount += 1;
+      } else {
+        playBackToWorkSound();
+        if (autoControlMusic) playMusicNow();
+      }
+
+      mode = mode === "work" ? "break" : "work";
+      secondsLeft = mode === "work" ? WORK_MINUTES * 60 : BREAK_MINUTES * 60;
+      endTime = Date.now() + secondsLeft * 1000;
+      updateUI();
+      saveState();
+    }
+
+    function syncTimer() {
+      if (!running || !endTime) return;
+      const remainingMs = endTime - Date.now();
+      const remainingSeconds = Math.max(0, Math.ceil(remainingMs / 1000));
+      if (remainingMs <= 0) {
+        finishCycle();
+        return;
+      }
+      secondsLeft = remainingSeconds;
+      updateUI();
+    }
+
+    function startTimer() {
+      if (!endTime) {
+        endTime = Date.now() + secondsLeft * 1000;
+      }
+      if (timerId) clearInterval(timerId);
+      timerId = setInterval(syncTimer, 250);
+      syncTimer();
+    }
+
+    function stopTimer() {
+      if (timerId) clearInterval(timerId);
+      timerId = null;
+      endTime = null;
+    }
+
+    function toggleRunning() {
+      running = !running;
+      if (running) {
+        startTimer();
+      } else {
+        stopTimer();
+      }
+      updateUI();
+    }
+
+    function resetTimer() {
+      running = false;
+      stopTimer();
+      mode = "work";
+      secondsLeft = WORK_MINUTES * 60;
+      updateUI();
+    }
+
+    function switchMode() {
+      running = false;
+      stopTimer();
+      mode = mode === "work" ? "break" : "work";
+      secondsLeft = mode === "work" ? WORK_MINUTES * 60 : BREAK_MINUTES * 60;
+      updateUI();
+    }
+
+    function saveLog() {
+      const title = titleInput.value.trim();
+      const notes = notesInput.value.trim();
+      if (!title && !notes) return;
+
+      logs.unshift({
+        id: Date.now(),
+        sprint: sprintCount,
+        title: title || "Uden titel",
+        notes: notes,
+        createdAt: new Date().toLocaleString("da-DK")
+      });
+
+      titleInput.value = "";
+      notesInput.value = "";
+      saveState();
+      updateUI();
+    }
+
+    function clearFields() {
+      titleInput.value = "";
+      notesInput.value = "";
+    }
+
+    function deleteLog(id) {
+      logs = logs.filter(item => item.id !== id);
+      saveState();
+      updateUI();
+    }
+    window.deleteLog = deleteLog;
+
+    function clearAll() {
+      logs = [];
+      sprintCount = 1;
+      clearFields();
+      resetTimer();
+      saveState();
+      updateUI();
+    }
+
+    function exportLogsToCsv() {
+      if (!logs.length) return;
+      const escapeCsv = (value) => `"${String(value).replace(/"/g, '""')}"`;
+      const rows = [
+        ["Sprint", "Title", "Notes", "Created At"],
+        ...logs.map(item => [item.sprint, item.title, item.notes, item.createdAt])
+      ];
+      const csv = rows.map(row => row.map(escapeCsv).join(",")).join("\n");
+      downloadFile(csv, `pomodoro-sprint-log-${new Date().toISOString().slice(0, 10)}.csv`, "text/csv;charset=utf-8;");
+    }
+
+    function exportLogsToMarkdown() {
+      if (!logs.length) return;
+      const generatedAt = new Date().toLocaleString("da-DK");
+      const markdown = [
+        "# Pomodoro sprint-log",
+        "",
+        `Eksporteret: ${generatedAt}`,
+        "",
+        ...logs.flatMap(item => [
+          `## Sprint ${item.sprint} — ${item.title}`,
+          "",
+          `- Timestamp: ${item.createdAt}`,
+          `- Titel: ${item.title}`,
+          "",
+          item.notes || "_Ingen noter_",
+          "",
+          "---",
+          ""
+        ])
+      ].join("\n");
+      const timestamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
+      downloadFile(markdown, `pomodoro-sprint-log-${timestamp}.md`, "text/markdown;charset=utf-8;");
+    }
+
+    function downloadFile(content, fileName, type) {
+      const blob = new Blob([content], { type });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = fileName;
+      link.click();
+      URL.revokeObjectURL(url);
+    }
+
+    function handleVisibilityChange() {
+      if (!document.hidden) syncTimer();
+    }
+
+    function onYouTubeIframeAPIReady() {
+      if (youtubeInputValue) {
+        createPlayerFromInput();
+      }
+    }
+    window.onYouTubeIframeAPIReady = onYouTubeIframeAPIReady;
+
+    document.getElementById("startPauseBtn").addEventListener("click", toggleRunning);
+    document.getElementById("resetBtn").addEventListener("click", resetTimer);
+    document.getElementById("switchModeBtn").addEventListener("click", switchMode);
+    document.getElementById("switchModeTop").addEventListener("click", switchMode);
+    document.getElementById("saveBtn").addEventListener("click", saveLog);
+    document.getElementById("clearFieldsBtn").addEventListener("click", clearFields);
+    document.getElementById("clearAllBtn").addEventListener("click", clearAll);
+    document.getElementById("exportCsvBtn").addEventListener("click", exportLogsToCsv);
+    document.getElementById("exportMdBtn").addEventListener("click", exportLogsToMarkdown);
+    document.getElementById("loadYoutubeBtn").addEventListener("click", createPlayerFromInput);
+    document.getElementById("playYoutubeBtn").addEventListener("click", playMusicNow);
+    document.getElementById("pauseYoutubeBtn").addEventListener("click", pauseMusicNow);
+    autoControlCheckbox.addEventListener("change", (e) => {
+      autoControlMusic = e.target.checked;
+      saveState();
+    });
+    youtubeInput.addEventListener("change", () => {
+      youtubeInputValue = youtubeInput.value.trim();
+      saveState();
+    });
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+
+    loadState();
+    updateUI();
+    if (!youtubeInputValue) {
+      renderYouTubePlaceholder("Indsæt et almindeligt YouTube-link eller playlist-link og klik “Indlæs embed”.");
+    }
+  </script>
+</body>
+</html>
