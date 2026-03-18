@@ -298,9 +298,10 @@
             <button class="outline" id="pauseYoutubeBtn">Pause musik nu</button>
           </div>
           <div id="youtubeWrap">
-            <div class="empty">Indsæt et almindeligt YouTube-link eller playlist-link og klik “Indlæs embed”.</div>
+            <div class="empty">Indsæt et YouTube-, YouTube Music- eller playlist-link og klik “Indlæs embed”.</div>
           </div>
-          <p class="small">Musikken forsøges sat til 80% volumen. Første play skal du typisk selv trykke i playeren. Music.youtube.com playlists får nu lov at prøve, så længe det ikke er RD / mix-links.</p>
+          <p class="small"><em>* Music playback uses open services such as YouTube and YouTube Music. Playback may occasionally fail due to removed tracks, mixes/recommendation links, ads, account type, region locks, autoplay rules, or API limitations.</em></p>
+          <p class="small">Musikken forsøges sat til 80% volumen. Første play skal du typisk selv trykke i playeren. RD / RDCLAK / mix-links får nu lov at prøve, men de er stadig mere ustabile end normale videoer og playlister.</p>
         </div>
       </div>
 
@@ -546,16 +547,10 @@
       saveState();
 
       const raw = youtubeInputValue;
-      if (raw.includes("list=RD") || raw.includes("RDCLAK")) {
-        pendingYoutubeLoad = false;
-        renderYouTubePlaceholder("RD / RDCLAK auto-mix kan ikke embeddes. Brug en almindelig YouTube-playliste eller en normal video.", true);
-        return;
-      }
-
       const parsed = parseYouTubeInput(raw);
       if (!parsed.videoId && !parsed.playlistId) {
         pendingYoutubeLoad = false;
-        renderYouTubePlaceholder("Kunne ikke læse linket. Prøv et almindeligt YouTube-link eller playlist-link.");
+        renderYouTubePlaceholder("Kunne ikke læse linket. Prøv et YouTube-, YouTube Music- eller playlist-link.");
         return;
       }
 
