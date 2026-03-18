@@ -261,7 +261,7 @@
           <div id="youtubeWrap">
             <div class="empty">Indsæt et almindeligt YouTube-link eller playlist-link og klik “Indlæs embed”.</div>
           </div>
-          <p class="small">Musikken forsøges sat til 80% volumen. Første play skal du typisk selv trykke i playeren.</p>
+          <p class="small">Musikken forsøges sat til 80% volumen. Første play skal du typisk selv trykke i playeren. Music.youtube.com playlists får nu lov at prøve, så længe det ikke er RD / mix-links.</p>
         </div>
       </div>
 
@@ -475,10 +475,6 @@
       saveState();
 
       const raw = youtubeInputValue;
-      if (raw.includes("music.youtube.com")) {
-        renderYouTubePlaceholder("YouTube Music-links kan ikke bruges her. Åbn den samme playliste på almindelig youtube.com og brug det link i stedet.", true);
-        return;
-      }
       if (raw.includes("list=RD") || raw.includes("RDCLAK")) {
         renderYouTubePlaceholder("RD / RDCLAK auto-mix kan ikke embeddes. Brug en almindelig YouTube-playliste eller en normal video.", true);
         return;
